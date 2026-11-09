@@ -1,0 +1,81 @@
+name: OrangeFox A25
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_branch:
+        description: OrangeFox manifest branch
+        required: true
+        default: '12.1'
+      device_tree_branch:
+        description: Device tree branch
+        required: true
+        default: main
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout builder
+        uses: actions/checkout@v4
+
+      - name: Prepare build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2
+          git clone https://gitlab.com/OrangeFox/misc/scripts
+          cd scripts
+          sudo bash setup/android_build_env.sh
+
+      - name: Sync OrangeFox
+        env:
+          MANIFEST_BRANCH: ${{ inputs.manifest_branch }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/OrangeFox"
+          cd "$GITHUB_WORKSPACE/OrangeFox"
+          git config --global user.name "lazycodebuilder"
+          git config --global user.email "154446636+lazycodebuilder@users.noreply.github.com"
+          timeout --foreground 10m git clone https://gitlab.com/OrangeFox/sync.git
+          cd sync
+          timeout --foreground 30m ./orangefox_sync.sh --branch "$MANIFEST_BRANCH" --path "$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH"
+
+      - name: Clone A25 device tree
+        env:
+          DEVICE_TREE_BRANCH: ${{ inputs.device_tree_branch }}
+        run: |
+          cd "$GITHUB_WORKSPACE/OrangeFox/fox_12.1"
+          git clone https://github.com/RealHenryGX/twrp_device_ibrit_A25 -b "$DEVICE_TREE_BRANCH" device/ibrit/A25
+          cd device/ibrit/A25
+          echo "DEVICE_TREE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Build recovery and adbd
+        working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1
+        run: |
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          lunch twrp_A25-eng
+          mka adbd
+          mka recoveryimage
+
+      - name: Verify A25 recovery payload
+        working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1/device/ibrit/A25
+        run: |
+          python3 tools/verify_recovery_layout.py
+          test -x ../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
+          test -x ../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
+          test -e ../../out/target/product/A25/recovery/root/sbin/adbd || test -e ../../out/target/product/A25/recovery/root/system/bin/adbd
+
+      - name: Upload recovery artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ofrp-a25-${{ github.run_id }}
+          name: OrangeFox A25 ${{ github.run_id }}
+          files: |
+            OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.img
+            OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.zip
+          body: |
+            Device tree commit: ${{ env.DEVICE_TREE_COMMIT }}
