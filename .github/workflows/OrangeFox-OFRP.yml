@@ -56,7 +56,6 @@ jobs:
     name: Build OFRP by ${{ github.actor }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    if: github.event.repository.owner.id == github.event.sender.id
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     permissions:
@@ -93,15 +92,15 @@ jobs:
         cd ${GITHUB_WORKSPACE}/OrangeFox
         git config --global user.name "lazycodebuilder"
         git config --global user.email "154446636+lazycodebuilder@users.noreply.github.com"
-        git clone https://gitlab.com/OrangeFox/sync.git
+        timeout --foreground 10m git clone https://gitlab.com/OrangeFox/sync.git
         if [ ${{ github.event.inputs.MANIFEST_BRANCH }} == '11.0' ] || [ ${{ github.event.inputs.MANIFEST_BRANCH }} == '12.1' ]; then
            echo "Sync fox_${{ github.event.inputs.MANIFEST_BRANCH }} branch"
             cd sync
-            ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            timeout --foreground 30m ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         else
             echo "Sync legacy fox_${{ github.event.inputs.MANIFEST_BRANCH }} branch"
             cd sync/legacy
-            ./orangefox_sync_legacy.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+            timeout --foreground 30m ./orangefox_sync_legacy.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         fi
 
     - name: Clone Device Tree
