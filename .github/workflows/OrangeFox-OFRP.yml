@@ -118,8 +118,8 @@ jobs:
       id: fox_branch
       with:
         cond: ${{ github.event.inputs.MANIFEST_BRANCH == '11.0' || github.event.inputs.MANIFEST_BRANCH == '12.1' }}
-        if_true: lunch twrp_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka adbd ${{ github.event.inputs.BUILD_TARGET }}image
-        if_false: lunch omni_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka ${{ github.event.inputs.BUILD_TARGET }}image
+        if_true: lunch twrp_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka adbd && mka ${{ github.event.inputs.BUILD_TARGET }}image
+        if_false: lunch omni_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka adbd && mka ${{ github.event.inputs.BUILD_TARGET }}image
       
     - name: Building OrangeFox
       run: |
@@ -129,6 +129,14 @@ jobs:
         export ALLOW_MISSING_DEPENDENCIES=true
         set -e
         ${{ steps.fox_branch.outputs.value }}
+
+    - name: Verify A25 recovery payload
+      run: |
+        cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/${{ github.event.inputs.DEVICE_PATH }}
+        python3 tools/verify_recovery_layout.py
+        test -x ../../out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
+        test -x ../../out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
+        test -e ../../out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/sbin/adbd || test -e ../../out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/system/bin/adbd
 
     - name: Set Build Date # For Build Date Info, currently using Asia/Manila
       run: |

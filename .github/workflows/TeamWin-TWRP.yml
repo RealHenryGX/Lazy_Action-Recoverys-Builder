@@ -160,8 +160,20 @@ jobs:
         cd android-recovery
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
-        lunch ${{ env.DEVICE_MAKEFILE }}-eng && make clean && make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+        lunch ${{ env.DEVICE_MAKEFILE }}-eng && make clean
+        # TWRP 12.1 does not always pull adbd in through the recovery image
+        # target. Build it explicitly so FunctionFS ADB is present in ramdisk.
+        mka adbd
+        mka ${{ github.event.inputs.BUILD_TARGET }}image
         echo "Done building your ${{ github.event.inputs.BUILD_TARGET }}.img"
+
+    - name: Verify A25 recovery payload
+      run: |
+        cd android-recovery/${{ github.event.inputs.DEVICE_PATH }}
+        python3 tools/verify_recovery_layout.py
+        test -x ../../out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
+        test -x ../../out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
+        test -e ../../out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/sbin/adbd || test -e ../../out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/system/bin/adbd
       
     - name: Set Build Date # Output will be use in Release
       run: |
