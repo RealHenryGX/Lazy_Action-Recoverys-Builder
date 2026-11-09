@@ -97,29 +97,11 @@ jobs:
         if [ ${{ github.event.inputs.MANIFEST_BRANCH }} == '11.0' ] || [ ${{ github.event.inputs.MANIFEST_BRANCH }} == '12.1' ]; then
            echo "Sync fox_${{ github.event.inputs.MANIFEST_BRANCH }} branch"
             cd sync
-            FOX_PATH=${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            for attempt in 1 2 3; do
-              if timeout --foreground 20m ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path "$FOX_PATH"; then
-                exit 0
-              fi
-              echo "OrangeFox manifest sync attempt $attempt failed or timed out; retrying"
-              rm -rf "$FOX_PATH"
-              sleep 10
-            done
-            exit 1
+            timeout --foreground 30m ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         else
             echo "Sync legacy fox_${{ github.event.inputs.MANIFEST_BRANCH }} branch"
             cd sync/legacy
-            FOX_PATH=${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-            for attempt in 1 2 3; do
-              if timeout --foreground 20m ./orangefox_sync_legacy.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path "$FOX_PATH"; then
-                exit 0
-              fi
-              echo "OrangeFox legacy manifest sync attempt $attempt failed or timed out; retrying"
-              rm -rf "$FOX_PATH"
-              sleep 10
-            done
-            exit 1
+            timeout --foreground 30m ./orangefox_sync_legacy.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         fi
 
     - name: Clone Device Tree
