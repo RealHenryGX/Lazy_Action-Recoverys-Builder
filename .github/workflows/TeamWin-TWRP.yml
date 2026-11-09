@@ -58,6 +58,7 @@ jobs:
   build:
     name: Build TWRP by ${{ github.actor }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     if: github.event.repository.owner.id == github.event.sender.id
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -157,7 +158,7 @@ jobs:
         cd android-recovery
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
-        lunch ${{ env.DEVICE_MAKEFILE }}-eng && make clean
+        lunch ${{ env.DEVICE_MAKEFILE }}-eng
         # TWRP 12.1 does not always pull adbd in through the recovery image
         # target. Build it explicitly so FunctionFS ADB is present in ramdisk.
         mka adbd
