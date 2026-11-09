@@ -67,10 +67,10 @@ jobs:
         working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1/device/ibrit/A25
         run: |
           python3 tools/verify_recovery_layout.py
-          find ../../out/target/product/A25/recovery/root -type f \( -name '*adbd*' -o -name '*gatekeeper*' -o -name '*keymaster*' \) -print -exec stat -c '%A %n' {} \;
-          test -x ../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
-          test -x ../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
-          test -e ../../out/target/product/A25/recovery/root/sbin/adbd || test -e ../../out/target/product/A25/recovery/root/system/bin/adbd || test -e ../../out/target/product/A25/recovery/root/system/bin/adbd.recovery
+          find ../../../out/target/product/A25/recovery/root -type f \( -name '*adbd*' -o -name '*gatekeeper*' -o -name '*keymaster*' \) -print -exec stat -c '%A %n' {} \;
+          test -x ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
+          test -x ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
+          test -e ../../../out/target/product/A25/recovery/root/sbin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd.recovery
 
       - name: Upload recovery artifacts
         uses: softprops/action-gh-release@v2
