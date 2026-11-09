@@ -55,8 +55,10 @@ jobs:
       - name: Build recovery and adbd
         working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1
         run: |
+          set +e
           source build/envsetup.sh
           export ALLOW_MISSING_DEPENDENCIES=true
+          set -e
           lunch twrp_A25-eng
           mka adbd
           mka recoveryimage
