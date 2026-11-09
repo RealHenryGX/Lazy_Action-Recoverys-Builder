@@ -153,7 +153,7 @@ jobs:
         fi
       continue-on-error: true
       
-    - name: Building Image 
+    - name: Build adbd
       run: |
         cd android-recovery
         source build/envsetup.sh
@@ -162,6 +162,13 @@ jobs:
         # TWRP 12.1 does not always pull adbd in through the recovery image
         # target. Build it explicitly so FunctionFS ADB is present in ramdisk.
         mka adbd
+
+    - name: Build recovery image
+      run: |
+        cd android-recovery
+        source build/envsetup.sh
+        export ALLOW_MISSING_DEPENDENCIES=true
+        lunch ${{ env.DEVICE_MAKEFILE }}-eng
         mka ${{ github.event.inputs.BUILD_TARGET }}image
         echo "Done building your ${{ github.event.inputs.BUILD_TARGET }}.img"
 
