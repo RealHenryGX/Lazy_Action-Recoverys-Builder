@@ -73,7 +73,7 @@ jobs:
           grep -Fq 'mount configfs none /config' "$init_hw"
           grep -Fq 'mount functionfs adb /dev/usb-ffs/adb' "$init_hw"
           grep -Fq 'write /config/usb_gadget/g1/UDC ${sys.usb.controller}' "$init_hw"
-          grep -Fq 'sys.usb.config=adb && property:sys.usb.configfs=1 && property:sys.usb.ffs.ready=1' "$init_hw"
+          grep -Fq 'sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1' "$init_hw"
           ! grep -Fq 'mount configfs none /config' ../../../out/target/product/A25/recovery/root/init.recovery.usb.rc
           test -x ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
           test -x ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
