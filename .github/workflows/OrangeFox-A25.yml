@@ -79,8 +79,8 @@ jobs:
           grep -Fq 'start vendor.gatekeeper-1-0' ../../../out/target/product/A25/recovery/root/init.recovery.mt6765.rc
           ! grep -Fq 'mount configfs none /config' ../../../out/target/product/A25/recovery/root/init.recovery.usb.rc
           test -x ../../../out/target/product/A25/recovery/root/system/bin/keystore2
-          test -e ../../../out/target/product/A25/recovery/root/system/lib64/libsqlite.so
-          test -e ../../../out/target/product/A25/recovery/root/system/lib64/libkm_compat_service.so
+          test -e ../../../out/target/product/A25/recovery/root/system/lib64/stock/libsqlite.so
+          test -e ../../../out/target/product/A25/recovery/root/system/lib64/stock/libkm_compat_service.so
           test -x ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
           test -x ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
           test -e ../../../out/target/product/A25/recovery/root/sbin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd.recovery
