@@ -46,6 +46,7 @@ jobs:
       DEVICE_PATH: device/xiaomi/Archytas
       DEVICE_NAME: Archytas
       DEVICE_TREE_DTB: https://raw.githubusercontent.com/RealHenryGX/xiaomi-archytas-device-tree/main/dtb/archytas-main.dtb
+      KERNEL_BOOT_URL: ${{ inputs.KERNEL_BOOT_URL }}
 
     steps:
       - name: Check out builder
