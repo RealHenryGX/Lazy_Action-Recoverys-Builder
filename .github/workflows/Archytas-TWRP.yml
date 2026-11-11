@@ -23,6 +23,10 @@ on:
         default: pure
         type: choice
         options: [pure, ksu]
+      KERNEL_BOOT_URL:
+        description: 32 MiB boot artifact from the selected kernel fork
+        required: true
+        default: https://github.com/RealHenryGX/archimedes-kernel-64/releases/latest/download/boot-archimedes-pure-32MiB.img
       DEVICE_TREE:
         description: Archytas TWRP device tree
         required: true
@@ -70,13 +74,22 @@ jobs:
           chmod +x "$HOME/bin/repo"
           sudo ln -sf "$HOME/bin/repo" /usr/local/bin/repo
 
-      - name: Clone and build AGUI kernel
+      - name: Download AGUI kernel artifact
         run: |
-          git clone --depth=1 --branch "${{ inputs.KERNEL_REF }}" "${{ inputs.KERNEL_REPO }}" kernel
-          cd kernel
-          export OUT="$RUNNER_TEMP/archytas-${{ inputs.KERNEL_VARIANT }}"
-          export JOBS=$(nproc)
-          ./build_archimedes.sh "${{ inputs.KERNEL_VARIANT }}"
+          mkdir -p "$RUNNER_TEMP/archytas-kernel"
+          curl -fL "$KERNEL_BOOT_URL" -o "$RUNNER_TEMP/archytas-kernel/boot.img"
+          python3 - "$RUNNER_TEMP/archytas-kernel/boot.img" "$RUNNER_TEMP/archytas-kernel/Image.gz-dtb" <<'PY'
+          import pathlib, struct, sys
+          src = pathlib.Path(sys.argv[1]).read_bytes()
+          if len(src) != 32 * 1024 * 1024 or src[:8] != b"ANDROID!":
+              raise SystemExit("kernel artifact is not a 32 MiB Android boot image")
+          size = struct.unpack_from("<I", src, 8)[0]
+          payload = src[2048:2048 + size]
+          if not payload.startswith(b"\x1f\x8b"):
+              raise SystemExit("boot kernel payload is not gzip")
+          pathlib.Path(sys.argv[2]).write_bytes(payload)
+          print(f"Image.gz-dtb payload: {len(payload)} bytes")
+          PY
 
       - name: Package Archytas kernel with Wi-Fi DTB
         run: |
@@ -86,7 +99,7 @@ jobs:
             -o "$RUNNER_TEMP/archytas-package/template.img"
           python3 scripts/package_archytas_boot.py \
             --template "$RUNNER_TEMP/archytas-package/template.img" \
-            --kernel "$RUNNER_TEMP/archytas-${{ inputs.KERNEL_VARIANT }}/arch/arm64/boot/Image.gz-dtb" \
+            --kernel "$RUNNER_TEMP/archytas-kernel/Image.gz-dtb" \
             --dtb "$RUNNER_TEMP/archytas-package/archytas-main.dtb" \
             --output "$RUNNER_TEMP/archytas-package/boot.img" \
             --kernel-output "$RUNNER_TEMP/archytas-package/Image.gz-dtb"
