@@ -17,6 +17,8 @@ Compile your first custom recovery via Github Actions - with ldcheck setup. This
 ## Notes
    - Manifest 11.0 also supports Android 9 and Android 10 decryption.
    - This workflow supports Skyhawk Android 11 Recovery Branch v3.11.0 Now. Update the Skyhawk source yourself if you want A14 branch support.
+   - `Prebuilt-TWRP` is the shared workflow for devices whose kernel is built elsewhere. It accepts a prebuilt Android boot image, optionally injects a device DTB, copies the resulting kernel payload into the device tree, and builds the requested recovery image.
+   - Device-specific kernel variants and Wi-Fi configuration belong in the kernel repository; this builder remains device-agnostic.
 
 ## Credits
 - https://github.com/CaptainThrowback

@@ -1,0 +1,138 @@
+name: TeamWin prebuilt-kernel recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: TWRP manifest branch
+        required: true
+        default: twrp-12.1
+        type: choice
+        options: [twrp-12.1, twrp-11]
+      DEVICE_TREE:
+        description: Device tree repository
+        required: true
+      DEVICE_TREE_BRANCH:
+        description: Device tree branch
+        required: true
+        default: main
+      DEVICE_PATH:
+        description: Device path, for example device/xiaomi/Archytas
+        required: true
+      DEVICE_NAME:
+        description: Product device name
+        required: true
+      BUILD_TARGET:
+        description: Recovery target
+        required: true
+        default: recovery
+        type: choice
+        options: [recovery]
+      DEVICE_MAKEFILE:
+        description: Lunch makefile name without -eng, for example omni_Archytas
+        required: true
+      KERNEL_BOOT_URL:
+        description: Prebuilt Android boot v1 image containing the kernel
+        required: true
+      DEVICE_TREE_DTB_URL:
+        description: Optional DTB to inject into the kernel payload
+        required: false
+        default: ''
+      BOOT_TEMPLATE_URL:
+        description: Optional Android boot v1 template URL
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    env:
+      KERNEL_BOOT_URL: ${{ inputs.KERNEL_BOOT_URL }}
+      DEVICE_TREE_DTB_URL: ${{ inputs.DEVICE_TREE_DTB_URL }}
+      BOOT_TEMPLATE_URL: ${{ inputs.BOOT_TEMPLATE_URL }}
+    steps:
+      - name: Check out builder
+        uses: actions/checkout@v4
+      - name: Prepare build host
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libelf-dev libssl-dev device-tree-compiler \
+            gperf libc6-dev libxml2-utils xsltproc ccache liblz4-tool libncurses-dev \
+            libsdl1.2-dev build-essential git lzop pngcrush schedtool squashfs-tools \
+            libbz2-dev lzma ncftp qemu-user-static python3 curl
+      - name: Install Java and repo
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '11'
+      - name: Install repo tool
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          sudo ln -sf "$HOME/bin/repo" /usr/local/bin/repo
+      - name: Download and normalize prebuilt kernel
+        run: |
+          mkdir -p "$RUNNER_TEMP/prebuilt"
+          curl -fL "$KERNEL_BOOT_URL" -o "$RUNNER_TEMP/prebuilt/boot.img"
+          python3 - "$RUNNER_TEMP/prebuilt/boot.img" "$RUNNER_TEMP/prebuilt/Image.gz-dtb" <<'PY'
+          import pathlib, struct, sys
+          src = pathlib.Path(sys.argv[1]).read_bytes()
+          if src[:8] != b"ANDROID!": raise SystemExit("not an Android boot image")
+          size = struct.unpack_from("<I", src, 8)[0]
+          payload = src[2048:2048 + size]
+          if not payload.startswith(b"\x1f\x8b"): raise SystemExit("kernel payload is not gzip")
+          pathlib.Path(sys.argv[2]).write_bytes(payload)
+          PY
+      - name: Prepare kernel payload
+        run: |
+          mkdir -p "$RUNNER_TEMP/package"
+          if [ -n "$DEVICE_TREE_DTB_URL" ]; then
+            curl -fL "$DEVICE_TREE_DTB_URL" -o "$RUNNER_TEMP/package/device.dtb"
+            if [ -z "$BOOT_TEMPLATE_URL" ]; then
+              BOOT_TEMPLATE_URL=https://raw.githubusercontent.com/RealHenryGX/archimedes-kernel-64/main/tools/archimedes-boot-template-32MiB.img
+            fi
+            curl -fL "$BOOT_TEMPLATE_URL" -o "$RUNNER_TEMP/package/template.img"
+            python3 scripts/package_android_boot.py \
+              --template "$RUNNER_TEMP/package/template.img" \
+              --kernel "$RUNNER_TEMP/prebuilt/Image.gz-dtb" \
+              --dtb "$RUNNER_TEMP/package/device.dtb" \
+              --output "$RUNNER_TEMP/package/boot.img" \
+              --kernel-output "$RUNNER_TEMP/package/Image.gz-dtb"
+          else
+            cp "$RUNNER_TEMP/prebuilt/Image.gz-dtb" "$RUNNER_TEMP/package/Image.gz-dtb"
+          fi
+      - name: Initialize TWRP source
+        run: |
+          mkdir android-recovery
+          cd android-recovery
+          git config --global user.name lazycodebuilder
+          git config --global user.email 154446636+lazycodebuilder@users.noreply.github.com
+          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp -b "${{ inputs.MANIFEST_BRANCH }}"
+          repo sync -j$(nproc) --force-sync
+          git clone --depth=1 --branch "${{ inputs.DEVICE_TREE_BRANCH }}" "${{ inputs.DEVICE_TREE }}" "${{ inputs.DEVICE_PATH }}"
+          cp "$RUNNER_TEMP/package/Image.gz-dtb" "${{ inputs.DEVICE_PATH }}/prebuilt/kernel"
+      - name: Build recovery
+        working-directory: android-recovery
+        run: |
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          lunch "${{ inputs.DEVICE_MAKEFILE }}-eng"
+          mka adbd
+          make "${{ inputs.BUILD_TARGET }}image" -j$(nproc)
+      - name: Verify image
+        working-directory: android-recovery
+        run: |
+          test -s "out/target/product/${{ inputs.DEVICE_NAME }}/recovery.img"
+          stat -c '%n %s bytes' "out/target/product/${{ inputs.DEVICE_NAME }}/recovery.img"
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: twrp-${{ inputs.DEVICE_NAME }}-${{ github.run_id }}
+          name: TWRP ${{ inputs.DEVICE_NAME }} ${{ github.run_id }}
+          files: android-recovery/out/target/product/${{ inputs.DEVICE_NAME }}/recovery.img
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

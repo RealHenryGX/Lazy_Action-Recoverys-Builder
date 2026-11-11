@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an Archytas-compatible 32 MiB boot image from an AGUI kernel."""
+"""Inject a trailing DTB into an Android boot v1 image template."""
 
 from __future__ import annotations
 
@@ -8,11 +8,7 @@ import hashlib
 import struct
 from pathlib import Path
 
-
 PAGE_SIZE = 2048
-BOOT_SIZE = 32 * 1024 * 1024
-KERNEL_ADDR = 0x40080000
-TAGS_ADDR = 0x47880000
 FDT_MAGIC = b"\xd0\x0d\xfe\xed"
 
 
@@ -47,26 +43,25 @@ def main() -> None:
     template = args.template.read_bytes()
     built = args.kernel.read_bytes()
     dtb = args.dtb.read_bytes()
+    boot_size = len(template)
 
-    if len(template) != BOOT_SIZE or template[:8] != b"ANDROID!":
-        raise ValueError("template must be an exact 32 MiB Android boot image")
-    if le32(template, 12) != KERNEL_ADDR or le32(template, 32) != TAGS_ADDR:
-        raise ValueError("unexpected boot load addresses")
+    if boot_size < PAGE_SIZE or template[:8] != b"ANDROID!":
+        raise ValueError("template is not an Android boot image")
     if le32(template, 36) != PAGE_SIZE or le32(template, 40) != 1:
         raise ValueError("template must use Android boot v1 / 2048-byte pages")
     if dtb[:4] != FDT_MAGIC or be32(dtb, 4) != len(dtb):
-        raise ValueError("invalid Archytas DTB")
+        raise ValueError("invalid DTB")
 
-    _, built_dtb_offset = trailing_dtb(built)
-    kernel_gzip = built[:built_dtb_offset]
+    _, dtb_offset = trailing_dtb(built)
+    kernel_gzip = built[:dtb_offset]
     if kernel_gzip[:2] != b"\x1f\x8b":
         raise ValueError("kernel prefix is not gzip")
 
     combined = kernel_gzip + dtb
-    if PAGE_SIZE + len(combined) > BOOT_SIZE:
-        raise ValueError("kernel plus Archytas DTB does not fit in 32 MiB")
+    if PAGE_SIZE + len(combined) > boot_size:
+        raise ValueError("kernel plus DTB does not fit in the boot image")
 
-    out = bytearray(BOOT_SIZE)
+    out = bytearray(boot_size)
     out[:PAGE_SIZE] = template[:PAGE_SIZE]
     struct.pack_into("<I", out, 8, len(combined))
     out[PAGE_SIZE : PAGE_SIZE + len(combined)] = combined
@@ -76,9 +71,6 @@ def main() -> None:
     args.kernel_output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(out)
     args.kernel_output.write_bytes(combined)
-
-    if args.output.stat().st_size != BOOT_SIZE:
-        raise ValueError("output is not exactly 32 MiB")
     print(f"boot={args.output} bytes={len(out)} sha256={hashlib.sha256(out).hexdigest()}")
     print(f"kernel_payload={args.kernel_output} bytes={len(combined)} dtb={len(dtb)}")
 
