@@ -52,8 +52,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison flex libelf-dev libssl-dev \
             device-tree-compiler gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            gperf gcc-multilib g++-multilib libc6-dev lib32ncurses-dev \
-            libxml2-utils xsltproc ccache liblz4-tool libncurses-dev \
+            gperf libc6-dev libxml2-utils xsltproc ccache liblz4-tool \
+            libncurses-dev \
             libsdl1.2-dev build-essential git lzop pngcrush schedtool \
             squashfs-tools libbz2-dev lzma ncftp qemu-user-static python3
 
