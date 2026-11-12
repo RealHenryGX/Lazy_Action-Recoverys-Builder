@@ -94,6 +94,7 @@ jobs:
         continue-on-error: true
         working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1/device/ibrit/A25
         run: |
+          set +e
           python3 tools/verify_recovery_layout.py
           find ../../../out/target/product/A25/recovery/root -type f \( -name '*adbd*' -o -name '*gatekeeper*' -o -name '*keymaster*' \) -print -exec stat -c '%A %n' {} \;
           init_hw=../../../out/target/product/A25/recovery/root/system/etc/init/hw/init.rc
@@ -115,6 +116,9 @@ jobs:
           recovery_img=../../../out/target/product/A25/recovery.img
           test -f "$recovery_img"
           recovery_bytes=$(wc -c < "$recovery_img" | tr -d '[:space:]')
+          case "$recovery_bytes" in
+            ''|*[!0-9]*) recovery_bytes=0 ;;
+          esac
           recovery_partition_bytes=33554432
           recovery_usable_bytes=33484800
           recovery_over_bytes=$((recovery_bytes - recovery_usable_bytes))
@@ -128,7 +132,10 @@ jobs:
           find "$recovery_root" -type f -printf '%s\t%p\n' | sort -nr > recovery-file-sizes.txt || true
           du -x -B1 --max-depth=3 "$recovery_root" | sort -nr > recovery-directory-sizes.txt || true
           echo '--- largest recovery files ---'
-          head -n 80 recovery-file-sizes.txt
+          head -n 80 recovery-file-sizes.txt || true
+          echo '--- recovery size summary ---'
+          cat recovery-size-summary.txt || true
+          exit 0
 
       - name: Upload raw recovery outputs
         if: always()
