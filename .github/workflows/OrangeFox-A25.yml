@@ -37,13 +37,17 @@ jobs:
         env:
           MANIFEST_BRANCH: ${{ inputs.manifest_branch }}
         run: |
+          set -euxo pipefail
           mkdir -p "$GITHUB_WORKSPACE/OrangeFox"
           cd "$GITHUB_WORKSPACE/OrangeFox"
           git config --global user.name "lazycodebuilder"
           git config --global user.email "154446636+lazycodebuilder@users.noreply.github.com"
-          timeout --foreground 10m git clone https://gitlab.com/OrangeFox/sync.git
+          echo "[sync] cloning OrangeFox sync helper"
+          timeout --foreground --signal=TERM --kill-after=30s 10m git clone https://gitlab.com/OrangeFox/sync.git
           cd sync
-          timeout --foreground 30m ./orangefox_sync.sh --branch "$MANIFEST_BRANCH" --path "$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH"
+          echo "[sync] starting OrangeFox manifest sync"
+          timeout --foreground --signal=TERM --kill-after=30s 30m ./orangefox_sync.sh --branch "$MANIFEST_BRANCH" --path "$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH"
+          echo "[sync] OrangeFox manifest sync completed"
 
       - name: Clone A25 device tree
         env:
