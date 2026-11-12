@@ -25,13 +25,14 @@ jobs:
 
       - name: Prepare build environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y aria2
+          set -euxo pipefail
+          timeout --foreground --signal=TERM --kill-after=30s 20m sudo apt-get update
+          timeout --foreground --signal=TERM --kill-after=30s 20m sudo apt-get install -y aria2
           scripts_dir="$RUNNER_TEMP/orangefox-misc-scripts"
           rm -rf "$scripts_dir"
-          git clone https://gitlab.com/OrangeFox/misc/scripts "$scripts_dir"
+          timeout --foreground --signal=TERM --kill-after=30s 10m git clone https://gitlab.com/OrangeFox/misc/scripts "$scripts_dir"
           cd "$scripts_dir"
-          sudo bash setup/android_build_env.sh
+          timeout --foreground --signal=TERM --kill-after=30s 45m sudo bash setup/android_build_env.sh
 
       - name: Sync OrangeFox
         env:
