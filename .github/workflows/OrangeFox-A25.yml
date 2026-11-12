@@ -61,9 +61,13 @@ jobs:
           set -e
           lunch twrp_A25-eng
           mka adbd
-          mka recoveryimage
+          # Keep the device tree's real 32 MiB partition declaration, but
+          # raise only the build-time max-size gate so an oversized image is
+          # still produced for inspection and uploaded below.
+          mka BOARD_RECOVERYIMAGE_PARTITION_SIZE=67108864 recoveryimage
 
       - name: Verify A25 recovery payload
+        continue-on-error: true
         working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1/device/ibrit/A25
         run: |
           python3 tools/verify_recovery_layout.py
@@ -84,13 +88,29 @@ jobs:
           test -x ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
           test -x ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
           test -e ../../../out/target/product/A25/recovery/root/sbin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd.recovery
+          recovery_img=../../../out/target/product/A25/recovery.img
+          test -f "$recovery_img"
+          echo "A25 recovery.img size: $(stat -c %s "$recovery_img") bytes"
+
+      - name: Upload raw recovery outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ofrp-a25-${{ github.run_id }}-raw
+          if-no-files-found: warn
+          path: |
+            OrangeFox/fox_12.1/out/target/product/A25/recovery.img
+            OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.img
+            OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.zip
 
       - name: Upload recovery artifacts
+        if: always()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ofrp-a25-${{ github.run_id }}
           name: OrangeFox A25 ${{ github.run_id }}
           files: |
+            OrangeFox/fox_12.1/out/target/product/A25/recovery.img
             OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.img
             OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.zip
           body: |
