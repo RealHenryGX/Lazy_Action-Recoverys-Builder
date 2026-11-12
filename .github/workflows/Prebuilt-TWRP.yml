@@ -106,7 +106,7 @@ jobs:
           else
             cp "$RUNNER_TEMP/prebuilt/Image.gz-dtb" "$RUNNER_TEMP/package/Image.gz-dtb"
           fi
-      - name: Initialize TWRP source
+      - name: Initialize TWRP manifest
         run: |
           mkdir android-recovery
           cd android-recovery
@@ -115,11 +115,24 @@ jobs:
           timeout --kill-after=60s 10m \
             repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp \
             -b "${{ inputs.MANIFEST_BRANCH }}"
+
+      - name: Sync TWRP source
+        working-directory: android-recovery
+        run: |
           timeout --kill-after=60s 45m \
             repo sync -j4 --force-sync --retry-fetches=3
+
+      - name: Clone device tree
+        working-directory: android-recovery
+        run: |
           timeout --kill-after=60s 10m \
             git clone --depth=1 --branch "${{ inputs.DEVICE_TREE_BRANCH }}" \
             "${{ inputs.DEVICE_TREE }}" "${{ inputs.DEVICE_PATH }}"
+
+      - name: Install kernel payload
+        working-directory: android-recovery
+        run: |
+          mkdir -p "${{ inputs.DEVICE_PATH }}/prebuilt"
           cp "$RUNNER_TEMP/package/Image.gz-dtb" "${{ inputs.DEVICE_PATH }}/prebuilt/kernel"
       - name: Build recovery
         working-directory: android-recovery
