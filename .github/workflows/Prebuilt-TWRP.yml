@@ -119,8 +119,21 @@ jobs:
       - name: Sync TWRP source
         working-directory: android-recovery
         run: |
-          timeout --kill-after=60s 45m \
-            repo sync -j4 --force-sync --retry-fetches=3
+          set -o pipefail
+          setsid repo sync -j4 --force-sync --retry-fetches=3 &
+          sync_pid=$!
+          (
+            sleep 2700
+            kill -TERM -- "-$sync_pid" 2>/dev/null || true
+            sleep 60
+            kill -KILL -- "-$sync_pid" 2>/dev/null || true
+          ) &
+          watchdog_pid=$!
+          wait "$sync_pid"
+          sync_rc=$?
+          kill "$watchdog_pid" 2>/dev/null || true
+          wait "$watchdog_pid" 2>/dev/null || true
+          exit "$sync_rc"
 
       - name: Clone device tree
         working-directory: android-recovery
