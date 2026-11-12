@@ -92,7 +92,21 @@ jobs:
           test -e ../../../out/target/product/A25/recovery/root/sbin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd.recovery
           recovery_img=../../../out/target/product/A25/recovery.img
           test -f "$recovery_img"
-          echo "A25 recovery.img size: $(stat -c %s "$recovery_img") bytes"
+          recovery_bytes=$(stat -c %s "$recovery_img")
+          recovery_partition_bytes=33554432
+          recovery_usable_bytes=33484800
+          recovery_over_bytes=$((recovery_bytes - recovery_usable_bytes))
+          {
+            echo "recovery_img_bytes=$recovery_bytes"
+            echo "partition_bytes=$recovery_partition_bytes"
+            echo "usable_bytes=$recovery_usable_bytes"
+            echo "over_usable_bytes=$recovery_over_bytes"
+          } | tee recovery-size-summary.txt
+          recovery_root=../../../out/target/product/A25/recovery/root
+          find "$recovery_root" -type f -printf '%s\t%p\n' | sort -nr > recovery-file-sizes.txt
+          du -x -B1 --max-depth=3 "$recovery_root" | sort -nr > recovery-directory-sizes.txt || true
+          echo '--- largest recovery files ---'
+          head -n 80 recovery-file-sizes.txt
 
       - name: Upload raw recovery outputs
         if: always()
@@ -104,6 +118,9 @@ jobs:
             OrangeFox/fox_12.1/out/target/product/A25/recovery.img
             OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.img
             OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.zip
+            OrangeFox/fox_12.1/device/ibrit/A25/recovery-size-summary.txt
+            OrangeFox/fox_12.1/device/ibrit/A25/recovery-file-sizes.txt
+            OrangeFox/fox_12.1/device/ibrit/A25/recovery-directory-sizes.txt
 
       - name: Upload recovery artifacts
         if: always()
