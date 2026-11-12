@@ -1,4 +1,4 @@
-name: TeamWin prebuilt-kernel recovery
+name: TeamWin [TWRP] Prebuilt Kernel
 
 on:
   workflow_dispatch:
@@ -45,6 +45,7 @@ on:
 
 jobs:
   build:
+    name: Build ${{ inputs.DEVICE_NAME }} TWRP (prebuilt kernel)
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
