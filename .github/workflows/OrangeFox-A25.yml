@@ -47,7 +47,24 @@ jobs:
           timeout --foreground --signal=TERM --kill-after=30s 10m git clone https://gitlab.com/OrangeFox/sync.git
           cd sync
           echo "[sync] starting OrangeFox manifest sync"
-          timeout --foreground --signal=TERM --kill-after=30s 30m ./orangefox_sync.sh --branch "$MANIFEST_BRANCH" --path "$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH"
+          export GIT_TERMINAL_PROMPT=0
+          setsid bash -x ./orangefox_sync.sh --branch "$MANIFEST_BRANCH" --path "$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH" &
+          sync_pid=$!
+          (
+            sleep 30m
+            echo "[sync] watchdog: terminating sync process group after 30 minutes"
+            kill -TERM -- "-$sync_pid" 2>/dev/null || true
+            sleep 30s
+            kill -KILL -- "-$sync_pid" 2>/dev/null || true
+          ) &
+          watchdog_pid=$!
+          set +e
+          wait "$sync_pid"
+          sync_status=$?
+          kill "$watchdog_pid" 2>/dev/null || true
+          wait "$watchdog_pid" 2>/dev/null || true
+          set -e
+          test "$sync_status" -eq 0
           echo "[sync] OrangeFox manifest sync completed"
 
       - name: Clone A25 device tree
