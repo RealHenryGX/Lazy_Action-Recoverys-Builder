@@ -95,24 +95,7 @@ jobs:
         working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1/device/ibrit/A25
         run: |
           set +e
-          python3 tools/verify_recovery_layout.py
-          find ../../../out/target/product/A25/recovery/root -type f \( -name '*adbd*' -o -name '*gatekeeper*' -o -name '*keymaster*' \) -print -exec stat -c '%A %n' {} \;
-          init_hw=../../../out/target/product/A25/recovery/root/system/etc/init/hw/init.rc
-          test -f "$init_hw"
-          grep -Fq 'mount configfs none /config' "$init_hw"
-          grep -Fq 'mount functionfs adb /dev/usb-ffs/adb' "$init_hw"
-          grep -Fq 'write /config/usb_gadget/g1/UDC ${sys.usb.controller}' "$init_hw"
-          grep -Fq 'sys.usb.config=adb && property:sys.usb.ffs.ready=1 && property:sys.usb.configfs=1' "$init_hw"
-          grep -Fq 'mount ext4 /dev/block/by-name/vendor /vendor ro' ../../../out/target/product/A25/recovery/root/init.recovery.mt6765.rc
-          grep -Fq 'start vendor.keymaster-4-1' ../../../out/target/product/A25/recovery/root/init.recovery.mt6765.rc
-          grep -Fq 'start vendor.gatekeeper-1-0' ../../../out/target/product/A25/recovery/root/init.recovery.mt6765.rc
-          ! grep -Fq 'mount configfs none /config' ../../../out/target/product/A25/recovery/root/init.recovery.usb.rc
-          test -e ../../../out/target/product/A25/recovery/root/system/etc/vintf/manifest/android.hardware.keymaster@4.1-service.xml
-          test ! -e ../../../out/target/product/A25/recovery/root/system/bin/keystore2
-          test ! -e ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.gatekeeper@1.0-service
-          test ! -e ../../../out/target/product/A25/recovery/root/system/bin/hw/android.hardware.keymaster@4.1-service
-          test ! -e ../../../out/target/product/A25/recovery/root/system/lib64/stock
-          test -e ../../../out/target/product/A25/recovery/root/sbin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd.recovery
+          python3 tools/verify_recovery_layout.py --ramdisk-root ../../../out/target/product/A25/recovery/root
           recovery_img=../../../out/target/product/A25/recovery.img
           test -f "$recovery_img"
           recovery_bytes=$(wc -c < "$recovery_img" | tr -d '[:space:]')
