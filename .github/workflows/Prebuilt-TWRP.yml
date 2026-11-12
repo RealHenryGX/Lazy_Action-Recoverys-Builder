@@ -112,12 +112,12 @@ jobs:
           cd android-recovery
           git config --global user.name lazycodebuilder
           git config --global user.email 154446636+lazycodebuilder@users.noreply.github.com
-          timeout --foreground --kill-after=60s 10m \
+          timeout --kill-after=60s 10m \
             repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp \
             -b "${{ inputs.MANIFEST_BRANCH }}"
-          timeout --foreground --kill-after=60s 45m \
-            repo sync -j$(nproc) --force-sync --retry-fetches=3
-          timeout --foreground --kill-after=60s 10m \
+          timeout --kill-after=60s 45m \
+            repo sync -j4 --force-sync --retry-fetches=3
+          timeout --kill-after=60s 10m \
             git clone --depth=1 --branch "${{ inputs.DEVICE_TREE_BRANCH }}" \
             "${{ inputs.DEVICE_TREE }}" "${{ inputs.DEVICE_PATH }}"
           cp "$RUNNER_TEMP/package/Image.gz-dtb" "${{ inputs.DEVICE_PATH }}/prebuilt/kernel"
