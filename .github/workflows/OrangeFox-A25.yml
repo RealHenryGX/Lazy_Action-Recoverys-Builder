@@ -119,11 +119,23 @@ jobs:
           case "$recovery_bytes" in
             ''|*[!0-9]*) recovery_bytes=0 ;;
           esac
+          kernel_bytes=$(od -An -tu4 -j8 -N4 "$recovery_img" | tr -d '[:space:]')
+          ramdisk_bytes=$(od -An -tu4 -j16 -N4 "$recovery_img" | tr -d '[:space:]')
+          page_size=$(od -An -tu4 -j36 -N4 "$recovery_img" | tr -d '[:space:]')
+          case "$page_size" in
+            ''|0|*[!0-9]*) page_size=2048 ;;
+          esac
+          ramdisk_offset=$(( ((2048 + kernel_bytes + page_size - 1) / page_size) * page_size ))
+          payload_end=$((ramdisk_offset + ramdisk_bytes))
           recovery_partition_bytes=33554432
           recovery_usable_bytes=33484800
-          recovery_over_bytes=$((recovery_bytes - recovery_usable_bytes))
+          recovery_over_bytes=$((payload_end - recovery_usable_bytes))
           {
             echo "recovery_img_bytes=$recovery_bytes"
+            echo "kernel_bytes=$kernel_bytes"
+            echo "ramdisk_bytes=$ramdisk_bytes"
+            echo "page_size=$page_size"
+            echo "payload_end_bytes=$payload_end"
             echo "partition_bytes=$recovery_partition_bytes"
             echo "usable_bytes=$recovery_usable_bytes"
             echo "over_usable_bytes=$recovery_over_bytes"
