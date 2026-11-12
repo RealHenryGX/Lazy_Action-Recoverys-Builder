@@ -114,7 +114,7 @@ jobs:
           test -e ../../../out/target/product/A25/recovery/root/sbin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd || test -e ../../../out/target/product/A25/recovery/root/system/bin/adbd.recovery
           recovery_img=../../../out/target/product/A25/recovery.img
           test -f "$recovery_img"
-          recovery_bytes=$(stat -c %s "$recovery_img")
+          recovery_bytes=$(wc -c < "$recovery_img" | tr -d '[:space:]')
           recovery_partition_bytes=33554432
           recovery_usable_bytes=33484800
           recovery_over_bytes=$((recovery_bytes - recovery_usable_bytes))
@@ -125,7 +125,7 @@ jobs:
             echo "over_usable_bytes=$recovery_over_bytes"
           } | tee recovery-size-summary.txt
           recovery_root=../../../out/target/product/A25/recovery/root
-          find "$recovery_root" -type f -printf '%s\t%p\n' | sort -nr > recovery-file-sizes.txt
+          find "$recovery_root" -type f -printf '%s\t%p\n' | sort -nr > recovery-file-sizes.txt || true
           du -x -B1 --max-depth=3 "$recovery_root" | sort -nr > recovery-directory-sizes.txt || true
           echo '--- largest recovery files ---'
           head -n 80 recovery-file-sizes.txt
