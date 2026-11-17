@@ -93,7 +93,7 @@ jobs:
           fi
           echo "DEVICE_TREE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "MANIFEST_BRANCH=$MANIFEST_BRANCH" >> "$GITHUB_ENV"
-          tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
+          bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
 
       - name: Build recovery and adbd
         working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch }}
