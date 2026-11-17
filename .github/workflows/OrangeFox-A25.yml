@@ -11,6 +11,10 @@ on:
         description: Device tree branch
         required: true
         default: main
+      device_tree_commit:
+        description: Optional device tree commit SHA (takes precedence over branch)
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -65,19 +69,34 @@ jobs:
           wait "$watchdog_pid" 2>/dev/null || true
           set -e
           test "$sync_status" -eq 0
+          manifest_sha=$(repo -C "$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH" manifest -r | sha256sum | cut -d' ' -f1)
+          echo "MANIFEST_SHA=$manifest_sha" >> "$GITHUB_ENV"
           echo "[sync] OrangeFox manifest sync completed"
 
       - name: Clone A25 device tree
         env:
           DEVICE_TREE_BRANCH: ${{ inputs.device_tree_branch }}
+          DEVICE_TREE_COMMIT_INPUT: ${{ inputs.device_tree_commit }}
+          MANIFEST_BRANCH: ${{ inputs.manifest_branch }}
         run: |
-          cd "$GITHUB_WORKSPACE/OrangeFox/fox_12.1"
-          git clone https://github.com/RealHenryGX/twrp_device_ibrit_A25 -b "$DEVICE_TREE_BRANCH" device/ibrit/A25
+          set -euxo pipefail
+          fox_dir="$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH"
+          test -d "$fox_dir/.repo"
+          cd "$fox_dir"
+          git clone https://github.com/RealHenryGX/twrp_device_ibrit_A25 device/ibrit/A25
           cd device/ibrit/A25
+          if [ -n "$DEVICE_TREE_COMMIT_INPUT" ]; then
+            git fetch --no-tags origin "$DEVICE_TREE_COMMIT_INPUT"
+            git checkout --detach FETCH_HEAD
+          else
+            git checkout --detach "origin/$DEVICE_TREE_BRANCH"
+          fi
           echo "DEVICE_TREE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "MANIFEST_BRANCH=$MANIFEST_BRANCH" >> "$GITHUB_ENV"
+          tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
 
       - name: Build recovery and adbd
-        working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1
+        working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch }}
         run: |
           set +e
           source build/envsetup.sh
@@ -91,28 +110,24 @@ jobs:
           mka BOARD_RECOVERYIMAGE_PARTITION_SIZE=67108864 recoveryimage
 
       - name: Verify A25 recovery payload
-        continue-on-error: true
-        working-directory: ${{ github.workspace }}/OrangeFox/fox_12.1/device/ibrit/A25
+        working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch }}/device/ibrit/A25
         run: |
-          set +e
+          set -euxo pipefail
           python3 tools/verify_recovery_layout.py --ramdisk-root ../../../out/target/product/A25/recovery/root
           recovery_img=../../../out/target/product/A25/recovery.img
           test -f "$recovery_img"
           recovery_bytes=$(wc -c < "$recovery_img" | tr -d '[:space:]')
-          case "$recovery_bytes" in
-            ''|*[!0-9]*) recovery_bytes=0 ;;
-          esac
           kernel_bytes=$(od -An -tu4 -j8 -N4 "$recovery_img" | tr -d '[:space:]')
           ramdisk_bytes=$(od -An -tu4 -j16 -N4 "$recovery_img" | tr -d '[:space:]')
           page_size=$(od -An -tu4 -j36 -N4 "$recovery_img" | tr -d '[:space:]')
-          case "$page_size" in
-            ''|0|*[!0-9]*) page_size=2048 ;;
-          esac
+          [[ "$recovery_bytes" =~ ^[0-9]+$ && "$kernel_bytes" =~ ^[0-9]+$ && "$ramdisk_bytes" =~ ^[0-9]+$ && "$page_size" =~ ^[0-9]+$ ]]
+          (( page_size > 0 && recovery_bytes > 0 && kernel_bytes > 0 && ramdisk_bytes > 0 ))
           ramdisk_offset=$(( ((2048 + kernel_bytes + page_size - 1) / page_size) * page_size ))
           payload_end=$((ramdisk_offset + ramdisk_bytes))
           recovery_partition_bytes=33554432
           recovery_usable_bytes=33484800
           recovery_over_bytes=$((payload_end - recovery_usable_bytes))
+          (( recovery_over_bytes <= 0 ))
           {
             echo "recovery_img_bytes=$recovery_bytes"
             echo "kernel_bytes=$kernel_bytes"
@@ -124,13 +139,20 @@ jobs:
             echo "over_usable_bytes=$recovery_over_bytes"
           } | tee recovery-size-summary.txt
           recovery_root=../../../out/target/product/A25/recovery/root
-          find "$recovery_root" -type f -printf '%s\t%p\n' | sort -nr > recovery-file-sizes.txt || true
-          du -x -B1 --max-depth=3 "$recovery_root" | sort -nr > recovery-directory-sizes.txt || true
+          find "$recovery_root" -type f -printf '%s\t%p\n' | sort -nr > recovery-file-sizes.txt
+          du -x -B1 --max-depth=3 "$recovery_root" | sort -nr > recovery-directory-sizes.txt
           echo '--- largest recovery files ---'
           head -n 80 recovery-file-sizes.txt || true
           echo '--- recovery size summary ---'
-          cat recovery-size-summary.txt || true
-          exit 0
+          cat recovery-size-summary.txt
+          {
+            echo "manifest_branch=$MANIFEST_BRANCH"
+            echo "manifest_sha=$MANIFEST_SHA"
+            echo "device_tree_commit=$DEVICE_TREE_COMMIT"
+            echo "TW_SKIP_ADDITIONAL_FSTAB=true"
+            echo "recovery_partition_bytes=$recovery_partition_bytes"
+            echo "recovery_usable_bytes=$recovery_usable_bytes"
+          } > build-metadata.txt
 
       - name: Upload raw recovery outputs
         if: always()
@@ -139,12 +161,13 @@ jobs:
           name: ofrp-a25-${{ github.run_id }}-raw
           if-no-files-found: warn
           path: |
-            OrangeFox/fox_12.1/out/target/product/A25/recovery.img
-            OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.img
-            OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.zip
-            OrangeFox/fox_12.1/device/ibrit/A25/recovery-size-summary.txt
-            OrangeFox/fox_12.1/device/ibrit/A25/recovery-file-sizes.txt
-            OrangeFox/fox_12.1/device/ibrit/A25/recovery-directory-sizes.txt
+            OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/recovery.img
+            OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/OrangeFox*.img
+            OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/OrangeFox*.zip
+            OrangeFox/fox_${{ inputs.manifest_branch }}/device/ibrit/A25/recovery-size-summary.txt
+            OrangeFox/fox_${{ inputs.manifest_branch }}/device/ibrit/A25/recovery-file-sizes.txt
+            OrangeFox/fox_${{ inputs.manifest_branch }}/device/ibrit/A25/recovery-directory-sizes.txt
+            OrangeFox/fox_${{ inputs.manifest_branch }}/device/ibrit/A25/build-metadata.txt
 
       - name: Upload recovery artifacts
         if: always()
@@ -153,8 +176,10 @@ jobs:
           tag_name: ofrp-a25-${{ github.run_id }}
           name: OrangeFox A25 ${{ github.run_id }}
           files: |
-            OrangeFox/fox_12.1/out/target/product/A25/recovery.img
-            OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.img
-            OrangeFox/fox_12.1/out/target/product/A25/OrangeFox*.zip
+            OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/recovery.img
+            OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/OrangeFox*.img
+            OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/OrangeFox*.zip
           body: |
+            Manifest branch: ${{ inputs.manifest_branch }}
+            Manifest SHA: ${{ env.MANIFEST_SHA }}
             Device tree commit: ${{ env.DEVICE_TREE_COMMIT }}
