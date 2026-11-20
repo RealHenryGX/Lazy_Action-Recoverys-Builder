@@ -100,7 +100,16 @@ jobs:
           echo "DEVICE_TREE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "DEVICE_TREE_URL=$device_tree_url" >> "$GITHUB_ENV"
           echo "MANIFEST_BRANCH=$MANIFEST_BRANCH" >> "$GITHUB_ENV"
+          recovery_url=https://gitlab.com/OrangeFox/bootable/Recovery.git
+          recovery_branch="fox_$MANIFEST_BRANCH"
+          test -d "$fox_dir/bootable/recovery/.git"
+          test "$(git -C "$fox_dir/bootable/recovery" remote get-url origin)" = "$recovery_url"
+          echo "ORANGEFOX_RECOVERY_URL=$recovery_url" >> "$GITHUB_ENV"
+          echo "ORANGEFOX_RECOVERY_BRANCH=$recovery_branch" >> "$GITHUB_ENV"
+          echo "ORANGEFOX_RECOVERY_COMMIT=$(git -C "$fox_dir/bootable/recovery" rev-parse HEAD)" >> "$GITHUB_ENV"
           bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
+          python3 tools/scale_orangefox_theme.py "$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
+          python3 tools/scale_orangefox_theme.py --check "$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
           bash tools/apply_synthetic_password_alias_patch.sh "$fox_dir/system/vold"
           grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "USRSKEY_synthetic_password_"' "$fox_dir/system/vold/KeystoreInfo.hpp"
           grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "USRSKEY_synthetic_password_"' "$fox_dir/system/vold/Decrypt.cpp"
@@ -162,6 +171,9 @@ jobs:
           {
             echo "manifest_branch=$MANIFEST_BRANCH"
             echo "manifest_sha=$MANIFEST_SHA"
+            echo "orangefox_recovery_url=$ORANGEFOX_RECOVERY_URL"
+            echo "orangefox_recovery_branch=$ORANGEFOX_RECOVERY_BRANCH"
+            echo "orangefox_recovery_commit=$ORANGEFOX_RECOVERY_COMMIT"
             echo "device_tree_commit=$DEVICE_TREE_COMMIT"
             echo "device_tree_url=$DEVICE_TREE_URL"
             echo "system_vold_commit=$VOLD_COMMIT"
@@ -200,6 +212,9 @@ jobs:
           body: |
             Manifest branch: ${{ inputs.manifest_branch }}
             Manifest SHA: ${{ env.MANIFEST_SHA }}
+            OrangeFox recovery URL: ${{ env.ORANGEFOX_RECOVERY_URL }}
+            OrangeFox recovery branch: ${{ env.ORANGEFOX_RECOVERY_BRANCH }}
+            OrangeFox recovery commit: ${{ env.ORANGEFOX_RECOVERY_COMMIT }}
             Device tree URL: ${{ env.DEVICE_TREE_URL }}
             Device tree commit: ${{ env.DEVICE_TREE_COMMIT }}
             system/vold URL: ${{ env.VOLD_URL }}
