@@ -106,7 +106,8 @@ jobs:
           grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "USRSKEY_synthetic_password_"' "$fox_dir/system/vold/Decrypt.cpp"
           git -C "$fox_dir/system/vold" diff --check -- KeystoreInfo.hpp
           echo "VOLD_COMMIT=$(git -C "$fox_dir/system/vold" rev-parse HEAD)" >> "$GITHUB_ENV"
-          echo "VOLD_URL=$(git -C "$fox_dir/system/vold" remote get-url origin)" >> "$GITHUB_ENV"
+          vold_url=$(repo manifest -r | python3 -c 'import sys, xml.etree.ElementTree as ET; root=ET.parse(sys.stdin).getroot(); remotes={node.attrib["name"]: node.attrib["fetch"].rstrip("/") for node in root.findall("remote")}; project=next(node for node in root.findall("project") if node.attrib.get("path") == "system/vold"); print(remotes[project.attrib["remote"]] + "/" + project.attrib["name"])')
+          echo "VOLD_URL=$vold_url" >> "$GITHUB_ENV"
 
       - name: Build recovery and adbd
         working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch }}
