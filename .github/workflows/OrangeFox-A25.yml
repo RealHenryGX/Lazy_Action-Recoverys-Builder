@@ -81,20 +81,32 @@ jobs:
         run: |
           set -euxo pipefail
           fox_dir="$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH"
+          device_tree_url=https://github.com/RealHenryGX/twrp_device_ibrit_A25
           test -d "$fox_dir/.repo"
           cd "$fox_dir"
-          git clone https://github.com/RealHenryGX/twrp_device_ibrit_A25 device/ibrit/A25
+          git clone "$device_tree_url" device/ibrit/A25
           cd device/ibrit/A25
           if [ -n "$DEVICE_TREE_COMMIT_INPUT" ]; then
+            if [[ ! "$DEVICE_TREE_COMMIT_INPUT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "device_tree_commit must be a complete 40-character commit SHA" >&2
+              exit 2
+            fi
             git fetch --no-tags origin "$DEVICE_TREE_COMMIT_INPUT"
             git checkout --detach FETCH_HEAD
+            test "$(git rev-parse HEAD)" = "${DEVICE_TREE_COMMIT_INPUT,,}"
           else
             git checkout --detach "origin/$DEVICE_TREE_BRANCH"
           fi
           echo "DEVICE_TREE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "DEVICE_TREE_URL=$device_tree_url" >> "$GITHUB_ENV"
           echo "MANIFEST_BRANCH=$MANIFEST_BRANCH" >> "$GITHUB_ENV"
           bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
           bash tools/apply_synthetic_password_alias_patch.sh "$fox_dir/system/vold"
+          grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "USRSKEY_synthetic_password_"' "$fox_dir/system/vold/KeystoreInfo.hpp"
+          grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "USRSKEY_synthetic_password_"' "$fox_dir/system/vold/Decrypt.cpp"
+          git -C "$fox_dir/system/vold" diff --check -- KeystoreInfo.hpp
+          echo "VOLD_COMMIT=$(git -C "$fox_dir/system/vold" rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "VOLD_URL=$(git -C "$fox_dir/system/vold" remote get-url origin)" >> "$GITHUB_ENV"
 
       - name: Build recovery and adbd
         working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch }}
@@ -150,6 +162,10 @@ jobs:
             echo "manifest_branch=$MANIFEST_BRANCH"
             echo "manifest_sha=$MANIFEST_SHA"
             echo "device_tree_commit=$DEVICE_TREE_COMMIT"
+            echo "device_tree_url=$DEVICE_TREE_URL"
+            echo "system_vold_commit=$VOLD_COMMIT"
+            echo "system_vold_url=$VOLD_URL"
+            echo "synthetic_password_alias_prefix=USRSKEY_synthetic_password_"
             echo "TW_SKIP_ADDITIONAL_FSTAB=true"
             echo "recovery_partition_bytes=$recovery_partition_bytes"
             echo "recovery_usable_bytes=$recovery_usable_bytes"
@@ -183,4 +199,7 @@ jobs:
           body: |
             Manifest branch: ${{ inputs.manifest_branch }}
             Manifest SHA: ${{ env.MANIFEST_SHA }}
+            Device tree URL: ${{ env.DEVICE_TREE_URL }}
             Device tree commit: ${{ env.DEVICE_TREE_COMMIT }}
+            system/vold URL: ${{ env.VOLD_URL }}
+            system/vold commit: ${{ env.VOLD_COMMIT }}
