@@ -110,10 +110,8 @@ jobs:
           bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
           python3 tools/scale_orangefox_theme.py "$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
           python3 tools/scale_orangefox_theme.py --check "$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
-          bash tools/apply_synthetic_password_alias_patch.sh "$fox_dir/system/vold"
-          grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "USRSKEY_synthetic_password_"' "$fox_dir/system/vold/KeystoreInfo.hpp"
-          grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "USRSKEY_synthetic_password_"' "$fox_dir/system/vold/Decrypt.cpp"
-          git -C "$fox_dir/system/vold" diff --check -- KeystoreInfo.hpp
+          # Keep the AndroidKeyStore alias used by LockSettingsService for Keystore2.
+          grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "synthetic_password_"' "$fox_dir/system/vold/KeystoreInfo.hpp"
           echo "VOLD_COMMIT=$(git -C "$fox_dir/system/vold" rev-parse HEAD)" >> "$GITHUB_ENV"
           vold_url=$(repo manifest -r | python3 -c 'import sys, xml.etree.ElementTree as ET; root=ET.parse(sys.stdin).getroot(); remotes={node.attrib["name"]: node.attrib["fetch"].rstrip("/") for node in root.findall("remote")}; project=next(node for node in root.findall("project") if node.attrib.get("path") == "system/vold"); print(remotes[project.attrib["remote"]] + "/" + project.attrib["name"])')
           echo "VOLD_URL=$vold_url" >> "$GITHUB_ENV"
@@ -178,7 +176,7 @@ jobs:
             echo "device_tree_url=$DEVICE_TREE_URL"
             echo "system_vold_commit=$VOLD_COMMIT"
             echo "system_vold_url=$VOLD_URL"
-            echo "synthetic_password_alias_prefix=USRSKEY_synthetic_password_"
+            echo "synthetic_password_alias_prefix=synthetic_password_"
             echo "TW_SKIP_ADDITIONAL_FSTAB=true"
             echo "recovery_partition_bytes=$recovery_partition_bytes"
             echo "recovery_usable_bytes=$recovery_usable_bytes"
