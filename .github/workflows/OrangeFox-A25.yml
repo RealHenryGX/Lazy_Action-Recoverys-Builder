@@ -108,8 +108,10 @@ jobs:
           echo "ORANGEFOX_RECOVERY_BRANCH=$recovery_branch" >> "$GITHUB_ENV"
           echo "ORANGEFOX_RECOVERY_COMMIT=$(git -C "$fox_dir/bootable/recovery" rev-parse HEAD)" >> "$GITHUB_ENV"
           bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
-          python3 tools/scale_orangefox_theme.py "$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
-          python3 tools/scale_orangefox_theme.py --check "$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
+          theme_dir="$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
+          python3 tools/scale_orangefox_theme.py "$theme_dir"
+          python3 tools/scale_orangefox_theme.py --check "$theme_dir"
+          python3 tools/center_orangefox_numpad.py "$theme_dir/pages/templates/keyboard.xml" "$theme_dir/images/SVG/Keyboard"
           # Keep the AndroidKeyStore alias used by LockSettingsService for Keystore2.
           grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "synthetic_password_"' "$fox_dir/system/vold/KeystoreInfo.hpp"
           git -C "$fox_dir/system/vold" apply "$PWD/patches/a25-report-ce-decrypt-stage.patch"
