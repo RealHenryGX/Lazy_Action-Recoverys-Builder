@@ -132,8 +132,10 @@ jobs:
           export ALLOW_MISSING_DEPENDENCIES=true
           set -e
           lunch twrp_A25-eng
-          mka sqlite3
-          test -x out/target/product/A25/system/bin/sqlite3
+          # The module alias also requests host variants, including Windows.
+          sqlite_device="${ANDROID_PRODUCT_OUT:?lunch did not set the product output}/system/bin/sqlite3"
+          mka "$sqlite_device"
+          test -x "$sqlite_device"
 
       - name: Upload A25 SQLite diagnostic
         if: ${{ inputs.sqlite_diagnostic_only }}
