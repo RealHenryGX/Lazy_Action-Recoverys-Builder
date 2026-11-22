@@ -15,6 +15,10 @@ on:
         description: Optional device tree commit SHA (takes precedence over branch)
         required: false
         default: ''
+      sqlite_diagnostic_only:
+        description: Build the A25 SQLite CLI as an artifact without building Recovery
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -119,7 +123,28 @@ jobs:
           vold_url=$(repo manifest -r | python3 -c 'import sys, xml.etree.ElementTree as ET; root=ET.parse(sys.stdin).getroot(); remotes={node.attrib["name"]: node.attrib["fetch"].rstrip("/") for node in root.findall("remote")}; project=next(node for node in root.findall("project") if node.attrib.get("path") == "system/vold"); print(remotes[project.attrib["remote"]] + "/" + project.attrib["name"])')
           echo "VOLD_URL=$vold_url" >> "$GITHUB_ENV"
 
+      - name: Build A25 SQLite diagnostic
+        if: ${{ inputs.sqlite_diagnostic_only }}
+        working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch }}
+        run: |
+          set +e
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          set -e
+          lunch twrp_A25-eng
+          mka sqlite3
+          test -x out/target/product/A25/system/bin/sqlite3
+
+      - name: Upload A25 SQLite diagnostic
+        if: ${{ inputs.sqlite_diagnostic_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a25-sqlite-${{ github.run_id }}
+          if-no-files-found: error
+          path: OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/system/bin/sqlite3
+
       - name: Build recovery and adbd
+        if: ${{ !inputs.sqlite_diagnostic_only }}
         working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch }}
         run: |
           set +e
@@ -134,6 +159,7 @@ jobs:
           mka BOARD_RECOVERYIMAGE_PARTITION_SIZE=67108864 recoveryimage
 
       - name: Verify A25 recovery payload
+        if: ${{ !inputs.sqlite_diagnostic_only }}
         working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch }}/device/ibrit/A25
         run: |
           set -euxo pipefail
@@ -186,7 +212,7 @@ jobs:
           } > build-metadata.txt
 
       - name: Upload raw recovery outputs
-        if: always()
+        if: ${{ always() && !inputs.sqlite_diagnostic_only }}
         uses: actions/upload-artifact@v4
         with:
           name: ofrp-a25-${{ github.run_id }}-raw
@@ -201,7 +227,7 @@ jobs:
             OrangeFox/fox_${{ inputs.manifest_branch }}/device/ibrit/A25/build-metadata.txt
 
       - name: Upload recovery artifacts
-        if: always()
+        if: ${{ always() && !inputs.sqlite_diagnostic_only }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ofrp-a25-${{ github.run_id }}
