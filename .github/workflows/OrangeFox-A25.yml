@@ -16,7 +16,7 @@ on:
         required: false
         default: ''
       sqlite_diagnostic_only:
-        description: Build the A25 SQLite CLI as an artifact without building Recovery
+        description: Build the A25 read-only Keystore probe without building Recovery
         type: boolean
         default: false
 
@@ -133,10 +133,10 @@ jobs:
           export ALLOW_MISSING_DEPENDENCIES=true
           set -e
           lunch twrp_A25-eng
-          # The module alias also requests host variants, including Windows.
-          sqlite_device="${ANDROID_PRODUCT_OUT:?lunch did not set the product output}/system/bin/sqlite3"
-          mka "$sqlite_device"
-          test -x "$sqlite_device"
+          # Build only the target executable to avoid host variants.
+          probe_device="${ANDROID_PRODUCT_OUT:?lunch did not set the product output}/system/bin/a25_keystore_probe"
+          mka "$probe_device"
+          test -x "$probe_device"
 
       - name: Upload A25 SQLite diagnostic
         if: ${{ inputs.sqlite_diagnostic_only }}
@@ -144,7 +144,7 @@ jobs:
         with:
           name: a25-sqlite-${{ github.run_id }}
           if-no-files-found: error
-          path: OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/system/bin/sqlite3
+          path: OrangeFox/fox_${{ inputs.manifest_branch }}/out/target/product/A25/system/bin/a25_keystore_probe
 
       - name: Build recovery and adbd
         if: ${{ !inputs.sqlite_diagnostic_only }}
