@@ -1,14 +1,13 @@
 --- a/partitionmanager.cpp
 +++ b/partitionmanager.cpp
-@@ -2917,11 +2917,18 @@ bool TWPartitionManager::Add_Remove_MTP_Storage(TWPartition* Part, int message_t
+@@ -3243,11 +3243,17 @@ bool TWPartitionManager::Add_Remove_MTP_Storage(TWPartition* Part, int message_t
  				return false;
  			}
- 			strcpy(mtp_message.path, Part->Storage_Path.c_str());
+ 			strcpy(mtp_message.path, path.c_str());
 -			if (Part->Storage_Name.size() >= sizeof(mtp_message.display)) {
 -				LOGERR("Storage name '%s' too large for mtpmsg\n", Part->Storage_Name.c_str());
 +			string mtp_name = Part->Storage_Name;
-+			// The A25 fstab uses legacy display flags (/data and /sdcard1).
-+			// Normalize only the MTP label so Windows sees Android-standard names.
++			// Normalize the A25 MTP labels without changing recovery mount paths.
 +			if (Part->Mount_Point == "/data")
 +				mtp_name = gui_lookup("internal", "Internal Storage");
 +			else if (Part->Mount_Point == "/sdcard1" || Part->Mount_Point == "/external_sd" || Part->Mount_Point == "/external_sdcard")
