@@ -1,6 +1,9 @@
 name: OrangeFox A25
 
 on:
+  push:
+    branches:
+      - a25-recovery-fbe-layout
   workflow_dispatch:
     inputs:
       manifest_branch:
@@ -113,6 +116,10 @@ jobs:
           echo "ORANGEFOX_RECOVERY_COMMIT=$(git -C "$fox_dir/bootable/recovery" rev-parse HEAD)" >> "$GITHUB_ENV"
           bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
           git -C "$fox_dir/bootable/recovery" apply "$PWD/patches/a25-fix-group-list-text-offset.patch"
+          # Reuse the Android Keystore2 namespace without allowing Recovery to
+          # migrate schema or mutate persistent key blobs.
+          git -C "$fox_dir/system/security" apply "$PWD/patches/a25-keystore2-readonly-system-db.patch"
+          git -C "$fox_dir/system/security" apply "$PWD/patches/a25-keystore2-readonly-guards.patch"
           theme_dir="$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
           python3 tools/scale_orangefox_theme.py "$theme_dir"
           python3 tools/scale_orangefox_theme.py --check "$theme_dir"
@@ -249,3 +256,7 @@ jobs:
             Device tree commit: ${{ env.DEVICE_TREE_COMMIT }}
             system/vold URL: ${{ env.VOLD_URL }}
             system/vold commit: ${{ env.VOLD_COMMIT }}
+@@
+           bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
+           git -C "$fox_dir/bootable/recovery" apply "$PWD/patches/a25-fix-group-list-text-offset.patch"
++          git -C "$fox_dir/bootable/recovery" apply "$PWD/patches/a25-mtp-storage-names.patch"
