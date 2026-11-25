@@ -253,3 +253,7 @@ jobs:
             Device tree commit: ${{ env.DEVICE_TREE_COMMIT }}
             system/vold URL: ${{ env.VOLD_URL }}
             system/vold commit: ${{ env.VOLD_COMMIT }}
+@@
+           bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
+           git -C "$fox_dir/bootable/recovery" apply "$PWD/patches/a25-fix-group-list-text-offset.patch"
++          git -C "$fox_dir/bootable/recovery" apply "$PWD/patches/a25-mtp-storage-names.patch"
