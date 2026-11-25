@@ -1,6 +1,7 @@
 --- a/partitionmanager.cpp
 +++ b/partitionmanager.cpp
-@@ -2917,8 +2917,15 @@ bool TWPartitionManager::Add_Remove_MTP_Storage(TWPartition* Part, int message_type) {
+@@ -2917,11 +2917,18 @@ bool TWPartitionManager::Add_Remove_MTP_Storage(TWPartition* Part, int message_t
+ 				return false;
  			}
  			strcpy(mtp_message.path, Part->Storage_Path.c_str());
 -			if (Part->Storage_Name.size() >= sizeof(mtp_message.display)) {
@@ -18,3 +19,6 @@
  			}
 -			strcpy(mtp_message.display, Part->Storage_Name.c_str());
 +			strcpy(mtp_message.display, mtp_name.c_str());
+ 			mtp_message.maxFileSize = Part->Get_Max_FileSize();
+ 			LOGINFO("sending message to add %i '%s' '%s'\n", mtp_message.storage_id, mtp_message.path, mtp_message.display);
+ 			if (write(mtp_write_fd, &mtp_message, sizeof(mtp_message)) <= 0) {
