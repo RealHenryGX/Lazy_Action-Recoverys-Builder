@@ -1,0 +1,262 @@
+name: OrangeFox A25
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      manifest_branch:
+        description: OrangeFox manifest branch
+        required: true
+        default: '12.1'
+      device_tree_branch:
+        description: Device tree branch
+        required: true
+        default: main
+      device_tree_commit:
+        description: Optional device tree commit SHA (takes precedence over branch)
+        required: false
+        default: ''
+      sqlite_diagnostic_only:
+        description: Build the A25 read-only Keystore probe without building Recovery
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout builder
+        uses: actions/checkout@v4
+
+      - name: Prepare build environment
+        run: |
+          set -euxo pipefail
+          timeout --foreground --signal=TERM --kill-after=30s 20m sudo apt-get update
+          timeout --foreground --signal=TERM --kill-after=30s 20m sudo apt-get install -y aria2
+          scripts_dir="$RUNNER_TEMP/orangefox-misc-scripts"
+          rm -rf "$scripts_dir"
+          timeout --foreground --signal=TERM --kill-after=30s 10m git clone https://gitlab.com/OrangeFox/misc/scripts "$scripts_dir"
+          cd "$scripts_dir"
+          timeout --foreground --signal=TERM --kill-after=30s 45m sudo bash setup/android_build_env.sh
+
+      - name: Sync OrangeFox
+        env:
+          MANIFEST_BRANCH: ${{ inputs.manifest_branch || '12.1' }}
+        run: |
+          set -euxo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/OrangeFox"
+          cd "$GITHUB_WORKSPACE/OrangeFox"
+          git config --global user.name "lazycodebuilder"
+          git config --global user.email "154446636+lazycodebuilder@users.noreply.github.com"
+          echo "[sync] cloning OrangeFox sync helper"
+          timeout --foreground --signal=TERM --kill-after=30s 10m git clone https://gitlab.com/OrangeFox/sync.git
+          cd sync
+          echo "[sync] starting OrangeFox manifest sync"
+          export GIT_TERMINAL_PROMPT=0
+          setsid bash -x ./orangefox_sync.sh --branch "$MANIFEST_BRANCH" --path "$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH" &
+          sync_pid=$!
+          (
+            sleep 30m
+            echo "[sync] watchdog: terminating sync process group after 30 minutes"
+            kill -TERM -- "-$sync_pid" 2>/dev/null || true
+            sleep 30s
+            kill -KILL -- "-$sync_pid" 2>/dev/null || true
+          ) &
+          watchdog_pid=$!
+          set +e
+          wait "$sync_pid"
+          sync_status=$?
+          kill "$watchdog_pid" 2>/dev/null || true
+          wait "$watchdog_pid" 2>/dev/null || true
+          set -e
+          test "$sync_status" -eq 0
+          manifest_sha=$(cd "$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH" && repo manifest -r | sha256sum | cut -d' ' -f1)
+          echo "MANIFEST_SHA=$manifest_sha" >> "$GITHUB_ENV"
+          echo "[sync] OrangeFox manifest sync completed"
+
+      - name: Clone A25 device tree
+        env:
+          DEVICE_TREE_BRANCH: ${{ inputs.device_tree_branch || 'a25-recovery-fbe-layout' }}
+          DEVICE_TREE_COMMIT_INPUT: ${{ inputs.device_tree_commit || 'bf6b757cd1eb9cd2dfeed3bd0da7bf78cc59c299' }}
+          MANIFEST_BRANCH: ${{ inputs.manifest_branch || '12.1' }}
+        run: |
+          set -euxo pipefail
+          fox_dir="$GITHUB_WORKSPACE/OrangeFox/fox_$MANIFEST_BRANCH"
+          device_tree_url=https://github.com/RealHenryGX/twrp_device_ibrit_A25
+          test -d "$fox_dir/.repo"
+          cd "$fox_dir"
+          git clone "$device_tree_url" device/ibrit/A25
+          cd device/ibrit/A25
+          if [ -n "$DEVICE_TREE_COMMIT_INPUT" ]; then
+            if [[ ! "$DEVICE_TREE_COMMIT_INPUT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "device_tree_commit must be a complete 40-character commit SHA" >&2
+              exit 2
+            fi
+            git fetch --no-tags origin "$DEVICE_TREE_COMMIT_INPUT"
+            git checkout --detach FETCH_HEAD
+            test "$(git rev-parse HEAD)" = "${DEVICE_TREE_COMMIT_INPUT,,}"
+          else
+            git checkout --detach "origin/$DEVICE_TREE_BRANCH"
+          fi
+          echo "DEVICE_TREE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "DEVICE_TREE_URL=$device_tree_url" >> "$GITHUB_ENV"
+          echo "MANIFEST_BRANCH=$MANIFEST_BRANCH" >> "$GITHUB_ENV"
+          recovery_url=https://gitlab.com/OrangeFox/bootable/Recovery.git
+          recovery_branch="fox_$MANIFEST_BRANCH"
+          test -d "$fox_dir/bootable/recovery/.git"
+          test "$(git -C "$fox_dir/bootable/recovery" remote get-url origin)" = "$recovery_url"
+          echo "ORANGEFOX_RECOVERY_URL=$recovery_url" >> "$GITHUB_ENV"
+          echo "ORANGEFOX_RECOVERY_BRANCH=$recovery_branch" >> "$GITHUB_ENV"
+          echo "ORANGEFOX_RECOVERY_COMMIT=$(git -C "$fox_dir/bootable/recovery" rev-parse HEAD)" >> "$GITHUB_ENV"
+          bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
+          git -C "$fox_dir/bootable/recovery" apply "$PWD/patches/a25-fix-group-list-text-offset.patch"
+          # Reuse the Android Keystore2 namespace without allowing Recovery to
+          # migrate schema or mutate persistent key blobs.
+          git -C "$fox_dir/system/security" apply "$PWD/patches/a25-keystore2-readonly-system-db.patch"
+          git -C "$fox_dir/system/security" apply "$PWD/patches/a25-keystore2-readonly-guards.patch"
+          theme_dir="$fox_dir/bootable/recovery/gui/theme/portrait_hdpi"
+          python3 tools/scale_orangefox_theme.py "$theme_dir"
+          python3 tools/scale_orangefox_theme.py --check "$theme_dir"
+          python3 tools/center_orangefox_numpad.py "$theme_dir/pages/templates/keyboard.xml" "$theme_dir/images/SVG/Keyboard"
+          # Keep the AndroidKeyStore alias used by LockSettingsService for Keystore2.
+          grep -Fqx '#define SYNTHETIC_PASSWORD_KEY_PREFIX "synthetic_password_"' "$fox_dir/system/vold/KeystoreInfo.hpp"
+          git -C "$fox_dir/system/vold" apply "$PWD/patches/a25-report-ce-decrypt-stage.patch"
+          echo "VOLD_COMMIT=$(git -C "$fox_dir/system/vold" rev-parse HEAD)" >> "$GITHUB_ENV"
+          vold_url=$(repo manifest -r | python3 -c 'import sys, xml.etree.ElementTree as ET; root=ET.parse(sys.stdin).getroot(); remotes={node.attrib["name"]: node.attrib["fetch"].rstrip("/") for node in root.findall("remote")}; project=next(node for node in root.findall("project") if node.attrib.get("path") == "system/vold"); print(remotes[project.attrib["remote"]] + "/" + project.attrib["name"])')
+          echo "VOLD_URL=$vold_url" >> "$GITHUB_ENV"
+
+      - name: Build A25 SQLite diagnostic
+        if: ${{ inputs.sqlite_diagnostic_only || false }}
+        working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}
+        run: |
+          set +e
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          set -e
+          lunch twrp_A25-eng
+          # Build only the target executable to avoid host variants.
+          probe_device="${ANDROID_PRODUCT_OUT:?lunch did not set the product output}/system/bin/a25_keystore_probe"
+          mka "$probe_device"
+          test -x "$probe_device"
+
+      - name: Upload A25 SQLite diagnostic
+        if: ${{ inputs.sqlite_diagnostic_only || false }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a25-sqlite-${{ github.run_id }}
+          if-no-files-found: error
+          path: OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/out/target/product/A25/system/bin/a25_keystore_probe
+
+      - name: Build recovery and adbd
+        if: ${{ !inputs.sqlite_diagnostic_only }}
+        working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}
+        run: |
+          set +e
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          set -e
+          lunch twrp_A25-eng
+          mka adbd
+          # Keep the device tree's real 32 MiB partition declaration, but
+          # raise only the build-time max-size gate so an oversized image is
+          # still produced for inspection and uploaded below.
+          mka BOARD_RECOVERYIMAGE_PARTITION_SIZE=67108864 recoveryimage
+
+      - name: Verify A25 recovery payload
+        if: ${{ !inputs.sqlite_diagnostic_only }}
+        working-directory: ${{ github.workspace }}/OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/device/ibrit/A25
+        run: |
+          set -euxo pipefail
+          python3 tools/verify_recovery_layout.py --ramdisk-root ../../../out/target/product/A25/recovery/root
+          recovery_img=../../../out/target/product/A25/recovery.img
+          test -f "$recovery_img"
+          recovery_bytes=$(wc -c < "$recovery_img" | tr -d '[:space:]')
+          kernel_bytes=$(od -An -tu4 -j8 -N4 "$recovery_img" | tr -d '[:space:]')
+          ramdisk_bytes=$(od -An -tu4 -j16 -N4 "$recovery_img" | tr -d '[:space:]')
+          page_size=$(od -An -tu4 -j36 -N4 "$recovery_img" | tr -d '[:space:]')
+          [[ "$recovery_bytes" =~ ^[0-9]+$ && "$kernel_bytes" =~ ^[0-9]+$ && "$ramdisk_bytes" =~ ^[0-9]+$ && "$page_size" =~ ^[0-9]+$ ]]
+          (( page_size > 0 && recovery_bytes > 0 && kernel_bytes > 0 && ramdisk_bytes > 0 ))
+          ramdisk_offset=$(( ((2048 + kernel_bytes + page_size - 1) / page_size) * page_size ))
+          payload_end=$((ramdisk_offset + ramdisk_bytes))
+          recovery_partition_bytes=33554432
+          recovery_usable_bytes=33484800
+          recovery_over_bytes=$((payload_end - recovery_usable_bytes))
+          (( recovery_over_bytes <= 0 ))
+          {
+            echo "recovery_img_bytes=$recovery_bytes"
+            echo "kernel_bytes=$kernel_bytes"
+            echo "ramdisk_bytes=$ramdisk_bytes"
+            echo "page_size=$page_size"
+            echo "payload_end_bytes=$payload_end"
+            echo "partition_bytes=$recovery_partition_bytes"
+            echo "usable_bytes=$recovery_usable_bytes"
+            echo "over_usable_bytes=$recovery_over_bytes"
+          } | tee recovery-size-summary.txt
+          recovery_root=../../../out/target/product/A25/recovery/root
+          find "$recovery_root" -type f -printf '%s\t%p\n' | sort -nr > recovery-file-sizes.txt
+          du -x -B1 --max-depth=3 "$recovery_root" | sort -nr > recovery-directory-sizes.txt
+          echo '--- largest recovery files ---'
+          head -n 80 recovery-file-sizes.txt || true
+          echo '--- recovery size summary ---'
+          cat recovery-size-summary.txt
+          {
+            echo "manifest_branch=$MANIFEST_BRANCH"
+            echo "manifest_sha=$MANIFEST_SHA"
+            echo "orangefox_recovery_url=$ORANGEFOX_RECOVERY_URL"
+            echo "orangefox_recovery_branch=$ORANGEFOX_RECOVERY_BRANCH"
+            echo "orangefox_recovery_commit=$ORANGEFOX_RECOVERY_COMMIT"
+            echo "device_tree_commit=$DEVICE_TREE_COMMIT"
+            echo "device_tree_url=$DEVICE_TREE_URL"
+            echo "system_vold_commit=$VOLD_COMMIT"
+            echo "system_vold_url=$VOLD_URL"
+            echo "synthetic_password_alias_prefix=synthetic_password_"
+            echo "TW_SKIP_ADDITIONAL_FSTAB=true"
+            echo "recovery_partition_bytes=$recovery_partition_bytes"
+            echo "recovery_usable_bytes=$recovery_usable_bytes"
+          } > build-metadata.txt
+
+      - name: Upload raw recovery outputs
+        if: ${{ always() && !inputs.sqlite_diagnostic_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ofrp-a25-${{ github.run_id }}-raw
+          if-no-files-found: warn
+          path: |
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/out/target/product/A25/recovery.img
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/out/target/product/A25/OrangeFox*.img
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/out/target/product/A25/OrangeFox*.zip
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/device/ibrit/A25/recovery-size-summary.txt
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/device/ibrit/A25/recovery-file-sizes.txt
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/device/ibrit/A25/recovery-directory-sizes.txt
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/device/ibrit/A25/build-metadata.txt
+
+      - name: Upload recovery artifacts
+        if: ${{ always() && !inputs.sqlite_diagnostic_only }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ofrp-a25-${{ github.run_id }}
+          name: OrangeFox A25 ${{ github.run_id }}
+          files: |
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/out/target/product/A25/recovery.img
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/out/target/product/A25/OrangeFox*.img
+            OrangeFox/fox_${{ inputs.manifest_branch || '12.1' }}/out/target/product/A25/OrangeFox*.zip
+          body: |
+            Manifest branch: ${{ inputs.manifest_branch || '12.1' }}
+            Manifest SHA: ${{ env.MANIFEST_SHA }}
+            OrangeFox recovery URL: ${{ env.ORANGEFOX_RECOVERY_URL }}
+            OrangeFox recovery branch: ${{ env.ORANGEFOX_RECOVERY_BRANCH }}
+            OrangeFox recovery commit: ${{ env.ORANGEFOX_RECOVERY_COMMIT }}
+            Device tree URL: ${{ env.DEVICE_TREE_URL }}
+            Device tree commit: ${{ env.DEVICE_TREE_COMMIT }}
+            system/vold URL: ${{ env.VOLD_URL }}
+            system/vold commit: ${{ env.VOLD_COMMIT }}
+@@
+           bash tools/apply_fbe_recovery_patch.sh "$fox_dir/bootable/recovery"
+           git -C "$fox_dir/bootable/recovery" apply "$PWD/patches/a25-fix-group-list-text-offset.patch"
++          git -C "$fox_dir/bootable/recovery" apply "$PWD/patches/a25-mtp-storage-names.patch"
