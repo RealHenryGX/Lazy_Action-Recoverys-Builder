@@ -1,6 +1,9 @@
 name: OrangeFox A25
 
 on:
+  push:
+    branches:
+      - a25-recovery-fbe-layout
   workflow_dispatch:
     inputs:
       manifest_branch:
