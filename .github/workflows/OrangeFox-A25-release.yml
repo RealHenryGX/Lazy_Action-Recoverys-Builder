@@ -83,7 +83,7 @@ jobs:
       - name: Clone A25 device tree
         env:
           DEVICE_TREE_BRANCH: ${{ inputs.device_tree_branch || 'a25-recovery-fbe-layout' }}
-          DEVICE_TREE_COMMIT_INPUT: ${{ inputs.device_tree_commit || '141bf0b1c3be31b9c4d1382f47f8a4c972f15f2c' }}
+          DEVICE_TREE_COMMIT_INPUT: ${{ inputs.device_tree_commit || '1015bdb46742005d453e713025e900e74a4a6bc3' }}
           MANIFEST_BRANCH: ${{ inputs.manifest_branch || '12.1' }}
         run: |
           set -euxo pipefail
